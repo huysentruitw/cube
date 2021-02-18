@@ -116,19 +116,19 @@ namespace Cube
             var c = (byte*)(imageData + (ui + v2 * imageWidth));
             var d = (byte*)(imageData + (u2 + v2 * imageWidth));
 
-            var blue1 = (byte) (*(a + 0) + (*(b + 0) - *(a + 0)) * mu);
-            var green1 = (byte) (*(a + 1) + (*(b + 1) - *(a + 1)) * mu);
-            var red1 = (byte) (*(a + 2) + (*(b + 2) - *(a + 2)) * mu);
+            var red1 = *(a + 0) + (*(b + 0) - *(a + 0)) * mu;
+            var green1 = *(a + 1) + (*(b + 1) - *(a + 1)) * mu;
+            var blue1 = *(a + 2) + (*(b + 2) - *(a + 2)) * mu;
 
-            var blue2 = (byte) (*(c + 0) + (*(d + 0) - *(c + 0)) * mu);
-            var green2 = (byte) (*(c + 1) + (*(d + 1) - *(c + 1)) * mu);
-            var red2 = (byte) (*(c + 2) + (*(d + 2) - *(c + 2)) * mu);
+            var red2 = *(c + 0) + (*(d + 0) - *(c + 0)) * mu;
+            var green2 = *(c + 1) + (*(d + 1) - *(c + 1)) * mu;
+            var blue2 = *(c + 2) + (*(d + 2) - *(c + 2)) * mu;
 
-            var blue = (byte)(blue1 + (blue2 - blue1) * nu);
-            var green = (byte)(green1 + (green2 - green1) * nu);
             var red = (byte)(red1 + (red2 - red1) * nu);
+            var green = (byte)(green1 + (green2 - green1) * nu);
+            var blue = (byte)(blue1 + (blue2 - blue1) * nu);
 
-            return ((uint)red << 16) + ((uint)green << 8) + blue;
+            return ((uint)blue << 16) + ((uint)green << 8) + red;
         }
 
         private static IEnumerable<(int Start, int End)> GenerateProcessingBlocks(int range, int blockCount)
