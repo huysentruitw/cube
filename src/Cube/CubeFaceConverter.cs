@@ -57,19 +57,16 @@ namespace Cube
 
             Parallel.ForEach(blocks, options, range =>
             {
-                unsafe
+                for (var k = range.Start; k < range.End; k++)
                 {
-                    for (var k = range.Start; k < range.End; k++)
-                    {
-                        var face = k / edge;
-                        var j = k % edge;
+                    var face = k / edge;
+                    var j = k % edge;
 
-                        for (var i = 0; i < edge; i++)
-                        {
-                            var xyz = OutputImageToVector(i, j, face, edge);
-                            var color = InterpolateVectorToColor(xyz, (uint*)inputData, inputImageWidth, inputImageHeight);
-                            *((uint*)outputData[face] + (i + j * edge)) = color;
-                        }
+                    for (var i = 0; i < edge; i++)
+                    {
+                        var xyz = OutputImageToVector(i, j, face, edge);
+                        var color = InterpolateVectorToColor(xyz, inputData, inputImageWidth, inputImageHeight);
+                        Marshal.WriteInt32(outputData[face], 4 * (i + j * edge), (int)color);
                     }
                 }
             });
@@ -92,7 +89,7 @@ namespace Cube
             };
         }
 
-        private static unsafe uint InterpolateVectorToColor(Vector3 xyz, uint* imageData, int imageWidth, int imageHeight)
+        private static uint InterpolateVectorToColor(Vector3 xyz, IntPtr imageData, int imageWidth, int imageHeight)
         {
             var theta = (float)Math.Atan2(xyz.Y, xyz.X); // # range -pi to pi
             var r = (float)Math.Sqrt(xyz.X * xyz.X + xyz.Y * xyz.Y);
@@ -112,18 +109,22 @@ namespace Cube
             var nu = vf - vi;
 
             // Pixel values of four nearest corners
-            var a = new Span<byte>(imageData + (ui + vi * imageWidth), 4);
-            var b = new Span<byte>(imageData + (u2 + vi * imageWidth), 4);
-            var c = new Span<byte>(imageData + (ui + v2 * imageWidth), 4);
-            var d = new Span<byte>(imageData + (u2 + v2 * imageWidth), 4);
+            var a = Marshal.ReadInt32(imageData, 4 * (ui + vi * imageWidth));
+            var b = Marshal.ReadInt32(imageData, 4 * (u2 + vi * imageWidth));
+            var c = Marshal.ReadInt32(imageData, 4 * (ui + v2 * imageWidth));
+            var d = Marshal.ReadInt32(imageData, 4 * (u2 + v2 * imageWidth));
 
-            var red1 = a[0] + (b[0] - a[0]) * mu;
-            var green1 = a[1] + (b[1] - a[1]) * mu;
-            var blue1 = a[2] + (b[2] - a[2]) * mu;
+            var red1 = (byte)a + ((byte)b - (byte)a) * mu;
+            a >>= 8; b >>= 8;
+            var green1 = (byte)a + ((byte)b - (byte)a) * mu;
+            a >>= 8; b >>= 8;
+            var blue1 = (byte)a + ((byte)b - (byte)a) * mu;
 
-            var red2 = c[0] + (d[0] - c[0]) * mu;
-            var green2 = c[1] + (d[1] - c[1]) * mu;
-            var blue2 = c[2] + (d[2] - c[2]) * mu;
+            var red2 = (byte)c + ((byte)d - (byte)c) * mu;
+            c >>= 8; d >>= 8;
+            var green2 = (byte)c + ((byte)d - (byte)c) * mu;
+            c >>= 8; d >>= 8;
+            var blue2 = (byte)c + ((byte)d - (byte)a) * mu;
 
             var red = (byte)(red1 + (red2 - red1) * nu);
             var green = (byte)(green1 + (green2 - green1) * nu);
