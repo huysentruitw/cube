@@ -28,14 +28,14 @@ namespace Cube
         {
             using var inputImage = await Image.LoadAsync<Rgb24>(Configuration.Default, inputImagePath, cancellationToken);
 
-            var outputFaceImages = Enumerable
+            var outputImages = Enumerable
                 .Range(0, 6)
                 .Select(_ => new Image<Rgb24>(cubeSizeInPixels, cubeSizeInPixels, Color.White))
                 .ToArray();
 
-            ConvertBack(inputImage, outputFaceImages, cubeSizeInPixels);
+            ConvertBack(inputImage, outputImages, cubeSizeInPixels, cancellationToken);
 
-            var saveTasks = outputFaceImages.Select(async (outputImage, index) =>
+            var saveTasks = outputImages.Select(async (outputImage, index) =>
             {
                 await outputImage.SaveAsync($"{outputImagePath}_{index}.jpg", OutputEncoder, cancellationToken);
                 outputImage.Dispose();
@@ -44,14 +44,19 @@ namespace Cube
             await Task.WhenAll(saveTasks);
         }
 
-        private static void ConvertBack(Image<Rgb24> inputImage, Image<Rgb24>[] outputImages, int edge)
+        private static void ConvertBack(Image<Rgb24> inputImage, Image<Rgb24>[] outputImages, int edge, CancellationToken cancellationToken)
         {
             var inputImageWidth = inputImage.Width;
             var inputImageHeight = inputImage.Height;
 
             var blocks = GenerateProcessingBlocks(6 * edge, Environment.ProcessorCount);
 
-            Parallel.ForEach(blocks, range =>
+            var options = new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+            };
+
+            Parallel.ForEach(blocks, options, range =>
             {
                 for (var k = range.Start; k < range.End; k++)
                 {
