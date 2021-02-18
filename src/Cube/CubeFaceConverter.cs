@@ -2,21 +2,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.PixelFormats;
 
-// #define ENABLE_BICUBIC_INTERPOLATION
-
 namespace Cube
 {
     public static class CubeFaceConverter
     {
-        private const double Pi = Math.PI;
-        private const double HalfPi = Pi / 2.0d;
+        private const float Pi = (float)Math.PI;
+        private const float HalfPi = Pi / 2.0f;
 
         private static readonly JpegEncoder OutputEncoder = new JpegEncoder
         {
@@ -54,18 +51,20 @@ namespace Cube
 
             var blocks = GenerateProcessingBlocks(6 * edge, Environment.ProcessorCount);
 
-            Parallel.ForEach(blocks, ((int Start, int End) range) =>
+            Parallel.ForEach(blocks, range =>
             {
                 for (var k = range.Start; k < range.End; k++)
                 {
                     var face = k / edge;
-                    var i = k % edge;
+                    var j = k % edge;
 
-                    for (var j = 0; j < edge; j++)
+                    var row = outputImages[face].GetPixelRowSpan(j);
+
+                    for (var i = 0; i < edge; i++)
                     {
                         var xyz = OutputImageToVector(i, j, face, edge);
                         var color = InterpolateVectorToColor(xyz, inputImage, inputImageWidth, inputImageHeight);
-                        outputImages[face][i, j] = color;
+                        row[i] = color;
                     }
                 }
             });
@@ -90,49 +89,36 @@ namespace Cube
 
         private static Rgb24 InterpolateVectorToColor(Vector3 xyz, Image<Rgb24> image, int imageWidth, int imageHeight)
         {
-            var theta = Math.Atan2(xyz.Y, xyz.X); // # range -pi to pi
-            var r = Math.Sqrt(xyz.X * xyz.X + xyz.Y * xyz.Y);
-            var phi = Math.Atan2(xyz.Z, r); // # range -pi/2 to pi/2
+            var theta = (float)Math.Atan2(xyz.Y, xyz.X); // # range -pi to pi
+            var r = (float)Math.Sqrt(xyz.X * xyz.X + xyz.Y * xyz.Y);
+            var phi = (float)Math.Atan2(xyz.Z, r); // # range -pi/2 to pi/2
 
             // source img coords
             var uf = (theta + Pi) / Pi * imageHeight;
             var vf = (HalfPi - phi) / Pi * imageHeight; // implicit assumption: _sh == _sw / 2
 
             // Use bilinear interpolation between the four surrounding pixels
-            var ui = SafeIndex((int) uf, imageWidth);  //# coords of pixel to bottom left
-            var vi = SafeIndex((int) vf, imageHeight);
+            var ui = Math.Clamp((int)uf, 0, imageWidth - 1);  //# coords of pixel to bottom left
+            var vi = Math.Clamp((int)vf, 0, imageHeight - 1);
 
-#if ENABLE_BICUBIC_INTERPOLATION
-            var u2 = SafeIndex(ui + 1, imageWidth);    //# coords of pixel to top right
-            var v2 = SafeIndex(vi + 1, imageHeight);
-            var mu = (byte)((uf - ui) * 255); //# fraction of way across pixel
-            var nu = (byte)((vf - vi) * 255);
+            var u2 = Math.Min(ui + 1, imageWidth - 1);    //# coords of pixel to top right
+            var v2 = Math.Min(vi + 1, imageHeight - 1);
+            var mu = uf - ui; //# fraction of way across pixel
+            var nu = vf - vi;
+
+            var ri = image.GetPixelRowSpan(vi);
+            var r2 = image.GetPixelRowSpan(v2);
 
             // Pixel values of four nearest corners
-            var a = image[ui, vi];
-            var b = image[u2, vi];
-            var c = image[ui, v2];
-            var d = image[u2, v2];
+            var a = ri[ui].ToVector4();
+            var b = ri[u2].ToVector4();
+            var c = r2[ui].ToVector4();
+            var d = r2[u2].ToVector4();
 
-            return Mix(Mix(a, b, mu), Mix(c, d, mu), nu);
-#else
-            return image[ui, vi];
-#endif
+            var result = new Rgb24();
+            result.FromVector4(Vector4.Lerp(Vector4.Lerp(a, b, mu), Vector4.Lerp(c, d, mu), nu));
+            return result;
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        private static int SafeIndex(int n, int size) => Math.Min(Math.Max(n, 0), size - 1);
-
-#if ENABLE_BICUBIC_INTERPOLATION
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        private static Rgb24 Mix(Rgb24 one, Rgb24 other, byte c)
-        {
-            var red = (byte)(one.R + (other.R - one.R) * c);
-            var green = (byte)(one.G + (other.G - one.G) * c);
-            var blue = (byte)(one.B + (other.B - one.B) * c);
-            return new Rgb24(red, green, blue);
-        }
-#endif
 
         private static IEnumerable<(int Start, int End)> GenerateProcessingBlocks(int range, int blockCount)
         {
