@@ -27,7 +27,7 @@ namespace Cube
                 .Select(_ => new SKBitmap(cubeSizeInPixels, cubeSizeInPixels, SKColorType.Bgra8888, SKAlphaType.Opaque))
                 .ToArray();
 
-            ConvertBack(inputImage, outputImages, cubeSizeInPixels);
+            ConvertBack(inputImage, outputImages, cubeSizeInPixels, cancellationToken);
 
             var saveTasks = outputImages.Select(async (outputImage, index) =>
             {
@@ -40,7 +40,7 @@ namespace Cube
             await Task.WhenAll(saveTasks);
         }
 
-        private static void ConvertBack(SKBitmap inputImage, SKBitmap[] outputImages, int edge)
+        private static void ConvertBack(SKBitmap inputImage, SKBitmap[] outputImages, int edge, CancellationToken cancellationToken)
         {
             IntPtr inputData = inputImage.GetPixels();
             IntPtr[] outputData = outputImages.Select(outputImage => outputImage.GetPixels()).ToArray();
@@ -49,7 +49,12 @@ namespace Cube
 
             var blocks = GenerateProcessingBlocks(6 * edge, Environment.ProcessorCount);
 
-            Parallel.ForEach(blocks, range =>
+            var options = new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+            };
+
+            Parallel.ForEach(blocks, options, range =>
             {
                 unsafe
                 {
