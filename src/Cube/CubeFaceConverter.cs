@@ -1,12 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace Cube
 {
@@ -15,37 +14,36 @@ namespace Cube
         private const float Pi = (float)Math.PI;
         private const float HalfPi = Pi / 2.0f;
 
-        private static readonly JpegEncoder OutputEncoder = new JpegEncoder
-        {
-            Quality = 85,
-        };
-
         public static async Task Convert(
             string inputImagePath,
             string outputImagePath,
             int cubeSizeInPixels = 4096,
             CancellationToken cancellationToken = default)
         {
-            using var inputImage = await Image.LoadAsync<Rgb24>(Configuration.Default, inputImagePath, cancellationToken);
+            using var inputImage = SKBitmap.Decode(inputImagePath);
 
-            var outputFaceImages = Enumerable
+            var outputImages = Enumerable
                 .Range(0, 6)
-                .Select(_ => new Image<Rgb24>(cubeSizeInPixels, cubeSizeInPixels, Color.White))
+                .Select(_ => new SKBitmap(cubeSizeInPixels, cubeSizeInPixels, SKColorType.Bgra8888, SKAlphaType.Opaque))
                 .ToArray();
 
-            ConvertBack(inputImage, outputFaceImages, cubeSizeInPixels);
+            ConvertBack(inputImage, outputImages, cubeSizeInPixels);
 
-            var saveTasks = outputFaceImages.Select(async (outputImage, index) =>
+            var saveTasks = outputImages.Select(async (outputImage, index) =>
             {
-                await outputImage.SaveAsync($"{outputImagePath}_{index}.jpg", OutputEncoder, cancellationToken);
+                await using var stream = File.OpenWrite($"{outputImagePath}_{index}.jpg");
+                outputImage.Encode(SKEncodedImageFormat.Jpeg, 85)?.SaveTo(stream);
+                await stream.FlushAsync(cancellationToken);
                 outputImage.Dispose();
             });
 
             await Task.WhenAll(saveTasks);
         }
 
-        private static void ConvertBack(Image<Rgb24> inputImage, Image<Rgb24>[] outputImages, int edge)
+        private static void ConvertBack(SKBitmap inputImage, SKBitmap[] outputImages, int edge)
         {
+            IntPtr inputData = inputImage.GetPixels();
+            IntPtr[] outputData = outputImages.Select(outputImage => outputImage.GetPixels()).ToArray();
             var inputImageWidth = inputImage.Width;
             var inputImageHeight = inputImage.Height;
 
@@ -53,17 +51,19 @@ namespace Cube
 
             Parallel.ForEach(blocks, range =>
             {
-                for (var k = range.Start; k < range.End; k++)
+                unsafe
                 {
-                    var face = k / edge;
-                    var j = k % edge;
-                    var row = outputImages[face].GetPixelRowSpan(j);
-
-                    for (var i = 0; i < edge; i++)
+                    for (var k = range.Start; k < range.End; k++)
                     {
-                        var xyz = OutputImageToVector(i, j, face, edge);
-                        var color = InterpolateVectorToColor(xyz, inputImage, inputImageWidth, inputImageHeight);
-                        row[i] = color;
+                        var face = k / edge;
+                        var j = k % edge;
+
+                        for (var i = 0; i < edge; i++)
+                        {
+                            var xyz = OutputImageToVector(i, j, face, edge);
+                            var color = InterpolateVectorToColor(xyz, (uint*)inputData, inputImageWidth, inputImageHeight);
+                            *((uint*)outputData[face] + (i + j * edge)) = color;
+                        }
                     }
                 }
             });
@@ -86,7 +86,7 @@ namespace Cube
             };
         }
 
-        private static Rgb24 InterpolateVectorToColor(Vector3 xyz, Image<Rgb24> image, int imageWidth, int imageHeight)
+        private static unsafe uint InterpolateVectorToColor(Vector3 xyz, uint* imageData, int imageWidth, int imageHeight)
         {
             var theta = (float)Math.Atan2(xyz.Y, xyz.X); // # range -pi to pi
             var r = (float)Math.Sqrt(xyz.X * xyz.X + xyz.Y * xyz.Y);
@@ -105,18 +105,25 @@ namespace Cube
             var mu = uf - ui; // # fraction of way across pixel
             var nu = vf - vi;
 
-            var ri = image.GetPixelRowSpan(vi);
-            var r2 = image.GetPixelRowSpan(v2);
-
             // Pixel values of four nearest corners
-            var a = ri[ui].ToVector4();
-            var b = ri[u2].ToVector4();
-            var c = r2[ui].ToVector4();
-            var d = r2[u2].ToVector4();
+            var a = (byte*)(imageData + (ui + vi * imageWidth));
+            var b = (byte*)(imageData + (u2 + vi * imageWidth));
+            var c = (byte*)(imageData + (ui + v2 * imageWidth));
+            var d = (byte*)(imageData + (u2 + v2 * imageWidth));
 
-            var result = new Rgb24();
-            result.FromVector4(Vector4.Lerp(Vector4.Lerp(a, b, mu), Vector4.Lerp(c, d, mu), nu));
-            return result;
+            var blue1 = (byte) (*(a + 0) + (*(b + 0) - *(a + 0)) * mu);
+            var green1 = (byte) (*(a + 1) + (*(b + 1) - *(a + 1)) * mu);
+            var red1 = (byte) (*(a + 2) + (*(b + 2) - *(a + 2)) * mu);
+
+            var blue2 = (byte) (*(c + 0) + (*(d + 0) - *(c + 0)) * mu);
+            var green2 = (byte) (*(c + 1) + (*(d + 1) - *(c + 1)) * mu);
+            var red2 = (byte) (*(c + 2) + (*(d + 2) - *(c + 2)) * mu);
+
+            var blue = (byte)(blue1 + (blue2 - blue1) * nu);
+            var green = (byte)(green1 + (green2 - green1) * nu);
+            var red = (byte)(red1 + (red2 - red1) * nu);
+
+            return ((uint)red << 16) + ((uint)green << 8) + blue;
         }
 
         private static IEnumerable<(int Start, int End)> GenerateProcessingBlocks(int range, int blockCount)
