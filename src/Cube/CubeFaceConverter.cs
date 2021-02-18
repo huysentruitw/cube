@@ -57,7 +57,6 @@ namespace Cube
                 {
                     var face = k / edge;
                     var j = k % edge;
-
                     var row = outputImages[face].GetPixelRowSpan(j);
 
                     for (var i = 0; i < edge; i++)
@@ -72,8 +71,8 @@ namespace Cube
 
         private static Vector3 OutputImageToVector(int i, int j, int face, int edge)
         {
-            var a = (2.0f * i) / edge - 1.0f;
-            var b = (2.0f * j) / edge - 1.0f;
+            var a = 2.0f * i / edge - 1.0f;
+            var b = 2.0f * j / edge - 1.0f;
 
             return face switch
             {
@@ -93,17 +92,17 @@ namespace Cube
             var r = (float)Math.Sqrt(xyz.X * xyz.X + xyz.Y * xyz.Y);
             var phi = (float)Math.Atan2(xyz.Z, r); // # range -pi/2 to pi/2
 
-            // source img coords
+            // Source image coordinates
             var uf = (theta + Pi) / Pi * imageHeight;
             var vf = (HalfPi - phi) / Pi * imageHeight; // implicit assumption: _sh == _sw / 2
 
             // Use bilinear interpolation between the four surrounding pixels
-            var ui = Math.Clamp((int)uf, 0, imageWidth - 1);  //# coords of pixel to bottom left
+            var ui = Math.Clamp((int)uf, 0, imageWidth - 1);  // # coords of pixel to bottom left
             var vi = Math.Clamp((int)vf, 0, imageHeight - 1);
 
-            var u2 = Math.Min(ui + 1, imageWidth - 1);    //# coords of pixel to top right
+            var u2 = Math.Min(ui + 1, imageWidth - 1);    // # coords of pixel to top right
             var v2 = Math.Min(vi + 1, imageHeight - 1);
-            var mu = uf - ui; //# fraction of way across pixel
+            var mu = uf - ui; // # fraction of way across pixel
             var nu = vf - vi;
 
             var ri = image.GetPixelRowSpan(vi);
