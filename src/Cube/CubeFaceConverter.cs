@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using SkiaSharp;
@@ -111,18 +112,18 @@ namespace Cube
             var nu = vf - vi;
 
             // Pixel values of four nearest corners
-            var a = (byte*)(imageData + (ui + vi * imageWidth));
-            var b = (byte*)(imageData + (u2 + vi * imageWidth));
-            var c = (byte*)(imageData + (ui + v2 * imageWidth));
-            var d = (byte*)(imageData + (u2 + v2 * imageWidth));
+            var a = new Span<byte>(imageData + (ui + vi * imageWidth), 4);
+            var b = new Span<byte>(imageData + (u2 + vi * imageWidth), 4);
+            var c = new Span<byte>(imageData + (ui + v2 * imageWidth), 4);
+            var d = new Span<byte>(imageData + (u2 + v2 * imageWidth), 4);
 
-            var red1 = *(a + 0) + (*(b + 0) - *(a + 0)) * mu;
-            var green1 = *(a + 1) + (*(b + 1) - *(a + 1)) * mu;
-            var blue1 = *(a + 2) + (*(b + 2) - *(a + 2)) * mu;
+            var red1 = a[0] + (b[0] - a[0]) * mu;
+            var green1 = a[1] + (b[1] - a[1]) * mu;
+            var blue1 = a[2] + (b[2] - a[2]) * mu;
 
-            var red2 = *(c + 0) + (*(d + 0) - *(c + 0)) * mu;
-            var green2 = *(c + 1) + (*(d + 1) - *(c + 1)) * mu;
-            var blue2 = *(c + 2) + (*(d + 2) - *(c + 2)) * mu;
+            var red2 = c[0] + (d[0] - c[0]) * mu;
+            var green2 = c[1] + (d[1] - c[1]) * mu;
+            var blue2 = c[2] + (d[2] - c[2]) * mu;
 
             var red = (byte)(red1 + (red2 - red1) * nu);
             var green = (byte)(green1 + (green2 - green1) * nu);
